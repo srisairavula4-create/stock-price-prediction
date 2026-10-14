@@ -277,21 +277,37 @@ try:
     }).sort_values("Validation MAE (USD)").reset_index(drop=True)
     st.dataframe(validation_table, hide_index=True, use_container_width=True)
 
-    # Refit the selected algorithm on all historical rows for the next-observation estimate.
+   
+    # Train on all labelled historical data
     final_model = candidate_models()[best_name]
     final_model.fit(X, y_return)
-    latest_features = features_data.iloc[[-1]]
-    latest_return = float(final_model.predict(latest_features[FEATURES])[0])
-    estimate = float(latest_features["Close"].iloc[0] * (1.0 + latest_return))
-    last_date = prices["Date"].iloc[-1].date()
+
+    # Build features using the latest available trading row
+    latest_frame = prices.copy()
+    latest_frame["MA5"] = latest_frame["Close"].rolling(5).mean()
+    latest_frame["MA10"] = latest_frame["Close"].rolling(10).mean()
+    latest_frame["Return1"] = latest_frame["Close"].pct_change()
+
+    latest_features = latest_frame.dropna(
+        subset=FEATURES
+    ).iloc[[-1]]
+
+    latest_return = float(
+        final_model.predict(latest_features[FEATURES])[0]
+    )
+
+    estimate = float(
+        latest_features["Close"].iloc[0] * (1.0 + latest_return)
+    )
+
+    last_date = latest_features["Date"].iloc[0].date()
 
     st.subheader("Next-observation estimate")
     st.metric("Estimated next trading-day close", f"${estimate:,.2f}")
     st.caption(
-        f"Estimate generated from observations through {last_date}. This is not a live quote or guaranteed forecast. "
-        "Stock prices can move due to events not represented in the historical dataset."
+        f"Based on observations through {last_date}. "
+        "This is a model estimate, not a live quote or guaranteed forecast."
     )
-
 except (FileNotFoundError, pd.errors.EmptyDataError, ValueError) as exc:
     st.error(f"Cannot use the selected dataset: {exc}")
 except Exception as exc:
